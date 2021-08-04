@@ -10,3 +10,9 @@ edition = "2018"
 recrypt = "0.12.0"
 imap = "2.4.1"
 native-tls = "0.2.7"
+
+lettre = "0.9"
+lettre_email = "0.9"
+
+pest = "2.1.3"
+pest_derive = "2.1.0"
