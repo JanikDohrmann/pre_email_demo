@@ -716,6 +716,7 @@ checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
 name = "pre_email_demo"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "imap",
  "lettre",
  "lettre_email",
