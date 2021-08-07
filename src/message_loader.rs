@@ -15,10 +15,36 @@ pub mod message_loader {
     #[grammar = "email.pest"]
     struct EMailParser;
 
-    pub fn load_message(mut session: Session<TlsStream<TcpStream>>) -> String{
+    pub fn load_message(mut session: Session<TlsStream<TcpStream>>) -> imap::error::Result<Option<String>>{
+        println!("Pos 0");
+        // we want to fetch the first email in the INBOX mailbox
         session.select("INBOX");
 
-        String::from("test")
+        println!("Pos 1");
+
+        // fetch message number 1 in this mailbox, along with its RFC822 field.
+        // RFC 822 dictates the format of the body of e-mails
+        let messages = session.fetch("1","RFC822")?;
+        //println!("{}", messages.capacity());
+        println!("Pos 2");
+        let message = if let Some(m) = messages.iter().next() {
+            m
+        } else {
+            return Ok(None);
+        };
+
+        println!("Pos 3");
+
+        // extract the message's body
+        let body = message.body().expect("message did not have a body!");
+        let body = std::str::from_utf8(body)
+            .expect("message was not valid utf-8")
+            .to_string();
+
+        /*// be nice to the server and log out
+        imap_session.logout()?;*/
+
+        Ok(Some(body))
     }
 
     pub fn parse_message(message: String)  -> Message {

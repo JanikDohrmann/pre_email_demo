@@ -12,7 +12,8 @@ pub mod message_transmitter {
     /// target: an Target object that contains the target address.
     /// message: an Message object.
     /// connected_address: The address the system is currently connected to.
-    pub fn send_message(target: Target, message: Message, connected_address: String) {
+    /// credentials: The credentials to log in into the smtp server.
+    pub fn send_message(target: Target, message: Message, connected_address: String, credentials: Credentials) {
         let target_address = EmailAddress::new(target.address).unwrap();
         let origin_address = EmailAddress::new(connected_address).unwrap();
 
@@ -35,7 +36,6 @@ pub mod message_transmitter {
 
         let email = SendableEmail::new(envelope, message_id, message_text_vector);
 
-        let credentials = Credentials::new("janik.dohrmann@gmx.de".to_string(), "".to_string());
         let mut mailer = SmtpClient::new_simple("mail.gmx.net").unwrap().credentials(credentials).transport();
         // Send the email
         let result = mailer.send(email);
