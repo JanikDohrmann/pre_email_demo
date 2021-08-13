@@ -13,31 +13,17 @@ pub mod message_transmitter {
     /// message: an Message object.
     /// connected_address: The address the system is currently connected to.
     /// credentials: The credentials to log in into the smtp server.
-    pub fn send_message(target: Target, message: Message, connected_address: String, credentials: Credentials) {
-        let target_address = EmailAddress::new(target.address).unwrap();
-        let origin_address = EmailAddress::new(connected_address).unwrap();
+    pub fn send_message(target: Target, message: Message, connected_address: String, credentials: Credentials, smtp_domain: String) {
+        let email_builder = EmailBuilder::new()
+            .to(target.address)
+            .from(connected_address)
+            .subject(message.subject)
+            .text(message.text);
 
-        let mut target_address_vec = Vec::new();
-        target_address_vec.push(target_address);
+        let email = email_builder.build().unwrap().into();
 
-        let envelope = Envelope::new(Option::from(origin_address), target_address_vec).unwrap();
+        let mut mailer = SmtpClient::new_simple(smtp_domain.as_str()).unwrap().credentials(credentials).transport();
 
-        //message-id nach RFC5322
-        let left_side = format!("{}", Utc::now())
-            .replace(" UTC", "")
-            .replace("-", "")
-            .replace(" ", "")
-            .replace(":", "")
-            .replace(".", "");
-
-        let message_id = format!("<{}@pre_demo>", left_side);
-
-        let mut message_text_vector = message.text.as_bytes().to_vec();;
-
-        let email = SendableEmail::new(envelope, message_id, message_text_vector);
-
-        let mut mailer = SmtpClient::new_simple("mail.gmx.net").unwrap().credentials(credentials).transport();
-        // Send the email
         let result = mailer.send(email);
 
         if result.is_ok() {

@@ -6,80 +6,79 @@ pub mod message_loader {
 
     extern crate imap;
 
-    extern crate pest;
+    use std::ops::Deref;
+    use std::borrow::{Borrow, BorrowMut};
 
+    pub fn load_unseen_messages(mut session: Session<TlsStream<TcpStream>>) -> Vec<Message>{
+        session.select("INBOX").unwrap();
+        let inbox = session.search("UNSEEN").unwrap();
+        let i = inbox.iter().next().unwrap();
 
-    use pest::Parser;
+        let mut messages: Vec<Message> = Vec::new();
 
-    #[derive(Parser)]
-    #[grammar = "email.pest"]
-    struct EMailParser;
+        for element in inbox.iter() {
+            let message = load_message(&mut session, *element).unwrap().unwrap();
+            messages.push(message);
+        }
 
-    pub fn load_message(mut session: Session<TlsStream<TcpStream>>) -> imap::error::Result<Option<String>>{
-        println!("Pos 0");
-        // we want to fetch the first email in the INBOX mailbox
-        session.select("INBOX");
+        return messages;
+    }
 
-        println!("Pos 1");
-
+    pub fn load_message(mut session: &mut Session<TlsStream<TcpStream>>, message_number: u32) -> imap::error::Result<Option<Message>>{
         // fetch message number 1 in this mailbox, along with its RFC822 field.
         // RFC 822 dictates the format of the body of e-mails
-        let messages = session.fetch("1","RFC822")?;
-        //println!("{}", messages.capacity());
-        println!("Pos 2");
+        let messages = session.fetch(message_number.to_string(),"(BODY[TEXT] BODY[HEADER] ENVELOPE)")?;
+
         let message = if let Some(m) = messages.iter().next() {
             m
+
         } else {
             return Ok(None);
         };
+/*
+        println!("Message: {}", message.message);
+        println!("Envelope: {}", message.envelope().is_some());
+        println!("Body: {}", message.body().is_some());
+        println!("Text: {}", message.text().is_some());
+        println!("Header: {}", message.header().is_some());
 
-        println!("Pos 3");
+        println!("\n*****\n");*/
+        let envelope = message.envelope().unwrap();
 
-        // extract the message's body
-        let body = message.body().expect("message did not have a body!");
-        let body = std::str::from_utf8(body)
+
+        let subject = std::str::from_utf8(envelope.subject.as_ref().unwrap().deref())
             .expect("message was not valid utf-8")
             .to_string();
 
-        /*// be nice to the server and log out
-        imap_session.logout()?;*/
+        let mailbox = envelope.from.as_ref().unwrap().first().unwrap().mailbox.as_ref().unwrap().deref();
+        //let mailbox = envelope.from.as_ref().unwrap().first().unwrap().mailbox.unwrap();
+        let mailbox = std::str::from_utf8(mailbox)
+            .expect("message was not valid utf-8")
+            .to_string();
+        let host = envelope.from.as_ref().unwrap().first().unwrap().host.as_ref().unwrap().deref();
+        let host=  std::str::from_utf8(host)
+            .expect("message was not valid utf-8")
+            .to_string();
+        let from = format!("{}@{}", mailbox, host);
 
-        Ok(Some(body))
+
+        let message_text = std::str::from_utf8(message.text().unwrap())
+            .expect("message was not valid utf-8")
+            .to_string();
+
+        let message = build_message(subject, from, message_text);
+
+        Ok(Some(message))
     }
 
-    pub fn parse_message(message: String)  -> Message {
-        let pairs = EMailParser::parse(Rule::from, &message).unwrap_or_else(|e| panic!("{}", e));
-        // Because ident_list is silent, the iterator will contain idents
-        for pair in pairs {
-
-            let span = pair.clone().into_span();
-            // A pair is a combination of the rule which matched and a span of input
-            println!("Rule:    {:?}", pair.as_rule());
-            println!("Span:    {:?}", span);
-            println!("Text:    {}", span.as_str());
-
-            // A pair can be converted to an iterator of the tokens which make it up:
-            for inner_pair in pair.into_inner() {
-                let inner_span = inner_pair.clone().into_span();
-                match inner_pair.as_rule() {
-                    Rule::alia => println!("Alias:  {}", inner_span.as_str()),
-                    Rule::address => println!("Addresse:   {}", inner_span.as_str()),
-                    _ => unreachable!()
-                };
-            }
-        }
-        build_message("Test".parse().unwrap(), "test".parse().unwrap(), "test".parse().unwrap())
-    }
-
-    /// Creates a authorized session that is connected to an IMAP server.
+    /// Creates an authorized session that is connected to an IMAP server.
     /// domain: The address of the IMAP server.
     /// username: The username on that server for the login.
     /// password: the password on that server for the login.
     pub fn connect(domain: String, username: String, password: String) -> Session<TlsStream<TcpStream>> {
         let tls = native_tls::TlsConnector::builder().build().unwrap();
 
-        let client = imap::connect((domain.as_str(), 993), domain.as_str(), &tls).unwrap();
-
+        let client =imap::ClientBuilder::new(domain.as_str(), 993).native_tls().unwrap();
         let imap_session = client
             .login(username, password)
             .map_err(|e| e.0).ok().unwrap();

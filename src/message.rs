@@ -1,4 +1,6 @@
 pub mod message {
+
+    #[derive(Clone)]
     pub struct Message {
         pub subject: String,
         pub from: String,

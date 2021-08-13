@@ -1,6 +1,7 @@
 pub mod target {
     use recrypt::api::TransformKey;
 
+    #[derive(Clone)]
     pub struct Target {
         pub address: String,
         pub re_key: TransformKey
