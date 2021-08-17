@@ -1,14 +1,16 @@
 pub mod re_encryption {
+    use crate::message::message::{build_message, Message};
     use crate::target::target::Target;
-    use crate::message::message::{Message, build_message};
     use recrypt::api::*;
     use recrypt::nonemptyvec::NonEmptyVec;
 
-    pub fn re_encrypt(target: Target, message: Message, singing_keys: SigningKeypair) -> Message{
+    pub fn re_encrypt(target: Target, message: Message, singing_keys: SigningKeypair) -> Message {
         let enc_value = create_enc_value(message.text);
 
         let recrypt = Recrypt::new();
-        let transformed_value = recrypt.transform(enc_value, target.re_key, &singing_keys).unwrap();
+        let transformed_value = recrypt
+            .transform(enc_value, target.re_key, &singing_keys)
+            .unwrap();
 
         let text = create_transformed_value_string(transformed_value);
         return build_message(message.subject, message.from, text);
@@ -16,12 +18,12 @@ pub mod re_encryption {
 
     pub fn create_enc_value(text: String) -> EncryptedValue {
         let text_vec = convert_to_vec_u8(text);
-        println!("{}", text_vec.len());
+        //println!("{}", text_vec.len());
         if text_vec.len() == 576 {
-            println!("Once");
+            //println!("Once");
             create_enc_once_value(text_vec)
         } else {
-            println!("Transformed");
+            //println!("Transformed");
             create_transformed_value(text_vec)
         }
     }
@@ -69,7 +71,9 @@ pub mod re_encryption {
         tb_split = split.1;
         while tb_split.len() > 896 {
             let split = tb_split.split_at(896);
-            tb_vec.concat(&NonEmptyVec::new_first(construct_transform_block(split.0.to_vec())));
+            tb_vec.concat(&NonEmptyVec::new_first(construct_transform_block(
+                split.0.to_vec(),
+            )));
             tb_split = split.1;
         }
 
@@ -98,7 +102,8 @@ pub mod re_encryption {
             auth_hash,
             public_signing_key,
             signature,
-        } = encrypted_once_value {
+        } = encrypted_once_value
+        {
             let k = ephemeral_public_key.bytes_x_y();
             let lk = k.0;
             let rk = k.1;
@@ -128,7 +133,7 @@ pub mod re_encryption {
         convert_to_string(vec)
     }
 
-    pub fn create_transformed_value_string(transformed_value: EncryptedValue) -> String{
+    pub fn create_transformed_value_string(transformed_value: EncryptedValue) -> String {
         let mut vec = Vec::new();
         if let recrypt::api::EncryptedValue::TransformedValue {
             ephemeral_public_key,
@@ -137,8 +142,8 @@ pub mod re_encryption {
             transform_blocks,
             public_signing_key,
             signature,
-        } = transformed_value {
-
+        } = transformed_value
+        {
             vec.append(&mut deconstruct_public_key(ephemeral_public_key));
 
             for x in encrypted_message.bytes() {
@@ -165,8 +170,8 @@ pub mod re_encryption {
         return convert_to_string(vec);
     }
 
-    fn construct_public_key(split : &[u8]) -> PublicKey {
-        println!("Construct PK: {:?}", split);
+    fn construct_public_key(split: &[u8]) -> PublicKey {
+        //println!("Construct PK: {:?}", split);
         let pk_bytes = split.split_at(32);
         let public_key = PublicKey::new_from_slice(pk_bytes).unwrap();
         return public_key;
@@ -184,7 +189,7 @@ pub mod re_encryption {
         for x in rk {
             vec.push(*x)
         }
-        println!("Deconstruct PK: {:?}", vec);
+        //println!("Deconstruct PK: {:?}", vec);
         return vec;
     }
 
@@ -197,9 +202,14 @@ pub mod re_encryption {
             vec.push(*x)
         }
 
-        vec.append(&mut deconstruct_public_key(*transform_block.random_transform_public_key()));
+        vec.append(&mut deconstruct_public_key(
+            *transform_block.random_transform_public_key(),
+        ));
 
-        for x in transform_block.encrypted_random_transform_temp_key().bytes() {
+        for x in transform_block
+            .encrypted_random_transform_temp_key()
+            .bytes()
+        {
             vec.push(*x)
         }
 
@@ -253,16 +263,37 @@ pub mod re_encryption {
         }
         vec
     }
+
+    pub fn construct_plaintext(mut text: String) -> Plaintext {
+        println!("Plaintext String size: {}", text.len());
+        while text.len() < 384 {
+            text.push_str(" ");
+        }
+        let mut vec = text.as_bytes();
+        println!("Plaintext Vec size: {}", vec.len());
+        Plaintext::new_from_slice(vec).unwrap()
+    }
+
+    pub fn deconstruct_plaintext(plaintext: Plaintext) -> String {
+        let mut vec = Vec::new();
+        for x in plaintext.bytes() {
+            vec.push(*x)
+        }
+        String::from_utf8(vec).unwrap().trim().to_string()
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::message::message::build_message;
+    use crate::re_encryption::re_encryption::{
+        convert_to_string, convert_to_vec_u8, create_enc_value, create_encrypted_once_value_string,
+        re_encrypt,
+    };
+    use crate::re_encryption::*;
+    use crate::target::target::build_target;
     use recrypt::api::*;
     use recrypt::api::{EncryptedMessage, EncryptedValue};
-    use crate::re_encryption::*;
-    use crate::re_encryption::re_encryption::{convert_to_vec_u8, convert_to_string, create_encrypted_once_value_string, create_enc_value, re_encrypt};
-    use crate::target::target::build_target;
-    use crate::message::message::build_message;
 
     #[test]
     fn enc_dec_test() {
@@ -273,21 +304,22 @@ mod tests {
         let original_plaintext = recrypt.gen_plaintext();
 
         // generate signing keys
-        let origin_signing_keypair= recrypt.generate_ed25519_key_pair();
-        let alice_signing_keypair= recrypt.generate_ed25519_key_pair();
+        let origin_signing_keypair = recrypt.generate_ed25519_key_pair();
+        let alice_signing_keypair = recrypt.generate_ed25519_key_pair();
 
         // generate a public/private keypair to encrypt the data to initially.
         let (alice_priv_key, alice_pub_key) = recrypt.generate_key_pair().unwrap();
         let (bob_priv_key, bob_pub_key) = recrypt.generate_key_pair().unwrap();
 
         // generate a transform key that will change which private key can decrypt the data
-        let alice_to_bob_transform_key = recrypt.generate_transform_key(
-            &alice_priv_key,
-            &bob_pub_key,
-            &alice_signing_keypair).unwrap();
+        let alice_to_bob_transform_key = recrypt
+            .generate_transform_key(&alice_priv_key, &bob_pub_key, &alice_signing_keypair)
+            .unwrap();
 
         // encrypt the data to `initial_pub_key`!
-        let encrypted_val = recrypt.encrypt(&original_plaintext, &alice_pub_key, &origin_signing_keypair).unwrap();
+        let encrypted_val = recrypt
+            .encrypt(&original_plaintext, &alice_pub_key, &origin_signing_keypair)
+            .unwrap();
 
         let enc_string = create_encrypted_once_value_string(encrypted_val);
 
@@ -307,28 +339,30 @@ mod tests {
         let original_plaintext = recrypt.gen_plaintext();
 
         // generate signing keys
-        let origin_signing_keypair= recrypt.generate_ed25519_key_pair();
-        let alice_signing_keypair= recrypt.generate_ed25519_key_pair();
+        let origin_signing_keypair = recrypt.generate_ed25519_key_pair();
+        let alice_signing_keypair = recrypt.generate_ed25519_key_pair();
 
         // generate a public/private keypair to encrypt the data to initially.
         let (alice_priv_key, alice_pub_key) = recrypt.generate_key_pair().unwrap();
         let (bob_priv_key, bob_pub_key) = recrypt.generate_key_pair().unwrap();
 
         // generate a transform key that will change which private key can decrypt the data
-        let alice_to_bob_transform_key = recrypt.generate_transform_key(
-            &alice_priv_key,
-            &bob_pub_key,
-            &alice_signing_keypair).unwrap();
+        let alice_to_bob_transform_key = recrypt
+            .generate_transform_key(&alice_priv_key, &bob_pub_key, &alice_signing_keypair)
+            .unwrap();
 
         // encrypt the data to `initial_pub_key`!
-        let encrypted_val = recrypt.encrypt(&original_plaintext, &alice_pub_key, &origin_signing_keypair).unwrap();
+        let encrypted_val = recrypt
+            .encrypt(&original_plaintext, &alice_pub_key, &origin_signing_keypair)
+            .unwrap();
 
         let enc_string = create_encrypted_once_value_string(encrypted_val);
 
-
-        let transformed_message = re_encrypt(build_target("".to_string(), alice_to_bob_transform_key),
-                                             build_message("".to_string(), "".to_string(), enc_string),
-                                             alice_signing_keypair);
+        let transformed_message = re_encrypt(
+            build_target("".to_string(), alice_to_bob_transform_key),
+            build_message("".to_string(), "".to_string(), enc_string),
+            alice_signing_keypair,
+        );
 
         let enc = create_enc_value(transformed_message.text);
 
