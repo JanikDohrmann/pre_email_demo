@@ -21,6 +21,9 @@ mod message_transmitter;
 mod re_encryption;
 mod target;
 
+#[macro_use]
+extern crate pest_derive;
+
 fn main() {}
 
 fn pause() {

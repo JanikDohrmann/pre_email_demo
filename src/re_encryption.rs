@@ -265,12 +265,10 @@ pub mod re_encryption {
     }
 
     pub fn construct_plaintext(mut text: String) -> Plaintext {
-        println!("Plaintext String size: {}", text.len());
         while text.len() < 384 {
             text.push_str(" ");
         }
         let mut vec = text.as_bytes();
-        println!("Plaintext Vec size: {}", vec.len());
         Plaintext::new_from_slice(vec).unwrap()
     }
 
@@ -280,6 +278,54 @@ pub mod re_encryption {
             vec.push(*x)
         }
         String::from_utf8(vec).unwrap().trim().to_string()
+    }
+
+    pub fn deconstruct_transform_key(transform_key: TransformKey) -> String {
+        let mut vec = Vec::new();
+
+        vec.append(&mut deconstruct_public_key(*transform_key.ephemeral_public_key()));
+
+        vec.append(&mut deconstruct_public_key(*transform_key.to_public_key()));
+
+        for x in transform_key.encrypted_temp_key().bytes() {
+            vec.push(*x)
+        }
+
+        for x in transform_key.hashed_temp_key().bytes() {
+            vec.push(*x)
+        }
+
+        for x in transform_key.public_signing_key().bytes() {
+            vec.push(*x)
+        }
+
+        for x in transform_key.signature().bytes() {
+            vec.push(*x)
+        }
+
+        convert_to_string(vec)
+    }
+
+    pub fn construct_transform_key(key: String) -> TransformKey {
+        let vec = convert_to_vec_u8(key);
+
+        let epk_split = vec.split_at(64);
+        let ephemeral_public_key = construct_public_key(epk_split.0);
+
+        let tpk_split = epk_split.1.split_at(64);
+        let to_public_key = construct_public_key(tpk_split.0);
+
+        let etk_split = tpk_split.1.split_at(384);
+        let encrypted_temp_key = EncryptedTempKey::new_from_slice(etk_split.0).unwrap();
+
+        let htk_split = etk_split.1.split_at(128);
+        let hashed_temp_key = HashedValue::new_from_slice(htk_split.0).unwrap();
+
+        let psk_split = htk_split.1.split_at(32);
+        let public_signing_key = PublicSigningKey::new_from_slice(psk_split.0).unwrap();
+
+        let signature = Ed25519Signature::new_from_slice(psk_split.1).unwrap();
+        TransformKey::new(ephemeral_public_key, to_public_key, encrypted_temp_key, hashed_temp_key, public_signing_key, signature)
     }
 }
 

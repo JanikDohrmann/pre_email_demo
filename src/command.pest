@@ -1,0 +1,14 @@
+// Grammar for parsing commands. The address is loosely based on rfc5322.
+command_message = {	"TA"~":"~address~"\n"~
+					"RK"~":"~reKey}
+
+address = {local_part~"@"~domain}
+local_part = _{DOT_ATOM}
+domain = _{DOT_ATOM}
+
+
+reKey = {(ASCII_DIGIT~ASCII_DIGIT~ASCII_DIGIT~" "?)+}
+
+ATEXT = _{ASCII_ALPHA | ASCII_DIGIT | "!" | "#" | "$" | "%" | "&" | "'" | "*" | "+" | "-" | "/" | "=" | "?" | "^" | "_" | "`" | "{" | "|" | "}" | "~"}
+
+DOT_ATOM  =   _{ATEXT+~("."~ATEXT+)*}
