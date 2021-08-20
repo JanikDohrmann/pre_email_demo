@@ -1,6 +1,10 @@
 // Grammar for parsing commands. The address is loosely based on rfc5322.
-command_message = {	"TA"~":"~address~"\n"~
-					"RK"~":"~reKey}
+command_message = {	command_start | command_stop}
+command_start = {"START"~"\n"~
+                 "TA"~":"~address~"\n"~
+                 "RK"~":"~reKey}
+
+command_stop = {"STOP"}
 
 address = {local_part~"@"~domain}
 local_part = _{DOT_ATOM}
