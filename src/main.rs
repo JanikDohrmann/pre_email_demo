@@ -1,18 +1,17 @@
 extern crate imap;
 
 use crate::message_loader::message_loader::{connect, load_message, load_unseen_messages};
-use crate::message_transmitter::message_transmitter::send_message;
-use crate::target::target::build_target;
-use recrypt::api::TransformKey;
+use crate::message_transmitter::message_transmitter::{send_message, smtp_connect};
+use crate::target::target::{build_target, Target};
 
 use crate::message::message::build_message;
-use chrono::Utc;
+use std::{thread, time};
 use lettre::{EmailAddress, Envelope, SendableEmail, SmtpClient, Transport};
-use lettre_email::EmailBuilder;
-use native_tls::TlsConnector;
 use recrypt::prelude::*;
 use std::io;
 use std::net::TcpStream;
+use crate::re_encryption::re_encryption::{construct_signing_keypair, re_encrypt};
+use crate::command::command::{parse, Command};
 
 mod command;
 mod message;
@@ -24,11 +23,109 @@ mod target;
 #[macro_use]
 extern crate pest_derive;
 
-fn main() {}
+/// Main funktion of the proxy. Contains the main loop of the system.
+fn main() {
+    println!("Welcome to the proxy re-encryption demonstration!");
+    println!("\n\nFirst we will configure this proxy.\nWe will start with the connection to the IMAP server.");
+    println!("\nPlease enter the address of the IMAP server:");
+    let mut imap_address = String::new();
+    io::stdin().read_line(&mut imap_address).expect("");
+    let imap_address =imap_address.replace("\n", "");
 
-fn pause() {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("");
+    let mut imap_port = 0;
+    while imap_port==0 {
+        println!("Please enter the port on wich your IMAP server is listening:");
+        let mut imap_port_string = String::new();
+        io::stdin().read_line(&mut imap_port_string).expect("");
+        let parsed_block = imap_port_string.replace("\n", "").parse::<u16>();
+        if parsed_block.is_ok() {
+            imap_port = parsed_block.unwrap();
+        }
+    }
+
+    println!("Please enter the username for the IMAP server:");
+    let mut imap_username = String::new();
+    io::stdin().read_line(&mut imap_username).expect("");
+    let imap_username = imap_username.replace("\n", "");
+
+    println!("Please enter the password for the IMAP server:");
+    let mut imap_password = String::new();
+    io::stdin().read_line(&mut imap_password).expect("");
+    let imap_password = imap_password.replace("\n", "");
+
+    println!("Now we configure the connection to the SMTP server.");
+    println!("Please enter the address of the SMTP server:");
+    let mut smtp_address = String::new();
+    io::stdin().read_line(&mut smtp_address).expect("");
+    let smtp_address =smtp_address.replace("\n", "");
+
+    let mut smtp_port = 0;
+    while smtp_port==0 {
+        println!("Please enter the port on wich your SMTP server is listening:");
+        let mut smtp_port_string = String::new();
+        io::stdin().read_line(&mut smtp_port_string).expect("");
+        let parsed_block = smtp_port_string.replace("\n", "").parse::<u16>();
+        if parsed_block.is_ok() {
+            smtp_port = parsed_block.unwrap();
+        }
+    }
+
+    println!("Please enter the username for the SMTP server:");
+    let mut smtp_username = String::new();
+    io::stdin().read_line(&mut smtp_username).expect("");
+    let smtp_username = smtp_username.replace("\n", "");
+
+    println!("Please enter the password for the SMTP server:");
+    let mut smtp_password = String::new();
+    io::stdin().read_line(&mut smtp_password).expect("");
+    let smtp_password = smtp_password.replace("\n", "");
+
+    println!("In the last step we are configuring the re encryption");
+    println!("Please enter the email address the proxy is connected to:");
+    let mut connected_address = String::new();
+    io::stdin().read_line(&mut connected_address).expect("");
+    let connected_address = connected_address.replace("\n", "");
+
+    println!("Please enter your full signing keypair");
+    let mut signing_keypair_string = String::new();
+    io::stdin().read_line(&mut signing_keypair_string).expect("");
+    let signing_keypair_string = signing_keypair_string.replace("\n", "");
+    let signing_keypair = construct_signing_keypair(signing_keypair_string);
+
+    let mut re_enc_target: Option<Target> = None;
+
+    loop {
+        let mut imap_session = connect(imap_address.clone(), imap_port, imap_username.clone(), imap_password.clone());
+
+        let messages = load_unseen_messages(imap_session);
+
+        for message in messages {
+            if message.subject == "COMMAND" {
+                let command = parse(message.text);
+                match command {
+                    Command::Start { target } => {
+                        re_enc_target = Some(target);
+                    }
+                    Command::Stop => {}
+                }
+                continue;
+            }
+            let mut smtp_connection = smtp_connect(smtp_address.clone(), smtp_port, smtp_username.clone(), smtp_password.clone());
+
+            let re_encrypted_message = re_encrypt(
+                re_enc_target.clone().unwrap(),
+                message.clone(),
+                signing_keypair.clone(),
+            );
+
+            send_message(re_enc_target.clone().unwrap(), re_encrypted_message, connected_address.clone(), smtp_connection);
+        }
+        println!("Going to Sleep");
+        let sleep_time = time::Duration::from_secs(30);
+
+        thread::sleep(sleep_time);
+        println!("Wake up");
+    }
 }
 
 #[cfg(test)]
@@ -156,12 +253,10 @@ mod tests {
         println!("\nTransform:");
         let target = build_target(bob.to_string(), alice_to_bob_transform_key);
 
-        let message1 = load_unseen_messages(generate_imap_session(alice))
+        let message = load_unseen_messages(generate_imap_session(alice))
             .pop()
             .unwrap();
-        let mut s = message1.text.split("\r\n").collect::<Vec<_>>();
 
-        let message = build_message(message1.subject, message1.from, s[4].to_string());
         println!("Received: {}", message.text);
         assert_eq!(encrypted_val_origin_string, message.text);
 
@@ -181,16 +276,12 @@ mod tests {
 
         //Test evaluation
         println!("\nBob:");
-        let mut messages_bob = load_unseen_messages(generate_imap_session(bob))
+        let mut message_bob = load_unseen_messages(generate_imap_session(bob))
             .pop()
             .unwrap();
-        let mut b = messages_bob.text.split("\r\n").collect::<Vec<_>>();
 
-        let bob_message1 = build_message(messages_bob.subject, messages_bob.from, b[4].to_string());
-
-        println!("\nreceived Bob: {}", bob_message1.text);
-        assert_eq!(re_encrypted_message.text, bob_message1.text);
-        let enc_bob_value = create_enc_value(bob_message1.text);
+        assert_eq!(re_encrypted_message.text, message_bob.text);
+        let enc_bob_value = create_enc_value(message_bob.text);
 
         let plaintext_bob = recrypt.decrypt(enc_bob_value, &bob_priv_key).unwrap();
 
@@ -249,12 +340,10 @@ mod tests {
         println!("\nTransform:");
         let target = build_target(bob.to_string(), alice_to_bob_transform_key);
 
-        let message1 = load_unseen_messages(generate_imap_session(alice))
+        let message = load_unseen_messages(generate_imap_session(alice))
             .pop()
             .unwrap();
-        let mut s = message1.text.split("\r\n").collect::<Vec<_>>();
 
-        let message = build_message(message1.subject, message1.from, s[4].to_string());
         println!("Received: {}", message.text);
         assert_eq!(encrypted_val_origin_string, message.text);
 
@@ -277,13 +366,10 @@ mod tests {
         let mut messages_bob = load_unseen_messages(generate_imap_session(bob))
             .pop()
             .unwrap();
-        let mut b = messages_bob.text.split("\r\n").collect::<Vec<_>>();
 
-        let bob_message1 = build_message(messages_bob.subject, messages_bob.from, b[4].to_string());
-
-        println!("\nreceived Bob: {}", bob_message1.text);
-        assert_eq!(re_encrypted_message.text, bob_message1.text);
-        let enc_bob_value = create_enc_value(bob_message1.text);
+        println!("\nreceived Bob: {}", messages_bob.text);
+        assert_eq!(re_encrypted_message.text, messages_bob.text);
+        let enc_bob_value = create_enc_value(messages_bob.text);
 
         let plaintext_bob = recrypt.decrypt(enc_bob_value, &bob_priv_key).unwrap();
 

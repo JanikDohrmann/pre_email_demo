@@ -83,11 +83,13 @@ pub mod message_loader {
             .to_string();
         let from = format!("{}@{}", mailbox, host);
 
-        let message_text = std::str::from_utf8(message.text().unwrap())
+        let message_text_vec = std::str::from_utf8(message.text().unwrap())
             .expect("message was not valid utf-8")
             .to_string();
 
-        let message = build_message(subject, from, message_text);
+        let message_text_vec = message_text_vec.split("\r\n").collect::<Vec<_>>();
+
+        let message = build_message(subject, from, message_text_vec[4].to_string());
 
         Ok(Some(message))
     }
@@ -98,13 +100,17 @@ pub mod message_loader {
     /// password: the password on that server for the login.
     pub fn connect(
         domain: String,
+        port: u16,
         username: String,
         password: String,
     ) -> Session<TlsStream<TcpStream>> {
-        let tls = native_tls::TlsConnector::builder().build().unwrap();
+        //let tls = native_tls::TlsConnector::builder().build().unwrap();
 
-        let client = imap::ClientBuilder::new(domain.as_str(), 993)
-            .native_tls()
+        let client = imap::ClientBuilder::new(domain.as_str(), port)
+            .connect(|domain, tcp| {
+                let ssl_conn = tls();
+                Ok(native_tls::TlsConnector::connect(&ssl_conn, domain, tcp).unwrap())
+            })
             .unwrap();
         let imap_session = client
             .login(username, password)
@@ -114,4 +120,13 @@ pub mod message_loader {
 
         return imap_session;
     }
+
+    fn tls() -> native_tls::TlsConnector {
+        native_tls::TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
+            .build()
+            .unwrap()
+    }
+
 }

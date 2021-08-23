@@ -171,7 +171,6 @@ pub mod re_encryption {
     }
 
     fn construct_public_key(split: &[u8]) -> PublicKey {
-        //println!("Construct PK: {:?}", split);
         let pk_bytes = split.split_at(32);
         let public_key = PublicKey::new_from_slice(pk_bytes).unwrap();
         return public_key;
@@ -189,7 +188,7 @@ pub mod re_encryption {
         for x in rk {
             vec.push(*x)
         }
-        //println!("Deconstruct PK: {:?}", vec);
+
         return vec;
     }
 
@@ -326,6 +325,11 @@ pub mod re_encryption {
 
         let signature = Ed25519Signature::new_from_slice(psk_split.1).unwrap();
         TransformKey::new(ephemeral_public_key, to_public_key, encrypted_temp_key, hashed_temp_key, public_signing_key, signature)
+    }
+
+    pub fn construct_signing_keypair(key: String) -> SigningKeypair {
+        let vec = convert_to_vec_u8(key);
+        SigningKeypair::from_byte_slice(&*vec).unwrap()
     }
 }
 
