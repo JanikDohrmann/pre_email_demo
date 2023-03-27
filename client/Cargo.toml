@@ -1,7 +1,7 @@
 [package]
-name = "pre_email_demo"
+name = "pre_email_client"
 version = "0.1.0"
-authors = ["Janik Dohrmann <janik.dohrmann@gmx.de>"]
+authors = ["Janik Dohrmann <janik.dohrmann@stud.th-luebeck.de>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,8 +13,5 @@ native-tls = "0.2.7"
 
 lettre = "0.9"
 lettre_email = "0.9"
-
-pest = "2.1.3"
-pest_derive = "2.1.0"
-
-chrono = "0.4.19"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
